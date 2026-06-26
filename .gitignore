@@ -2,6 +2,12 @@
 .env
 tokens.json
 
+# 마운트 서버 런타임 파일
+.dav_server.pid
+.mount_keep.pid
+mount_dav.log
+rclone.log
+
 # 다운로드 데이터
 drive_data/
 

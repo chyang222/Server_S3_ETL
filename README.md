@@ -11,7 +11,9 @@ Altairone Drive(S3 기반)에서 로컬 서버로 파일을 자동 복사하는 
 ├── .env              # 연결 설정 + 토큰 (gitignore 처리, 직접 생성 필요)
 ├── .env.example      # .env 템플릿
 ├── list_drive.py     # Drive 파일 목록 조회
-└── download_all.py   # Drive → 로컬 전체 다운로드 (폴더 구조 유지)
+├── download_all.py   # Drive → 로컬 전체 다운로드 (폴더 구조 유지)
+├── mount_dav.py      # Drive → WebDAV 서버 (마운트용)
+└── mount_keep.sh     # Linux 마운트 유지 데몬 스크립트
 ```
 
 ---
@@ -44,7 +46,7 @@ Altairone은 **Ory Hydra** 기반 OAuth2 서버를 사용한다.
 ```
 
 ETL이 주기적으로 실행되는 한 Refresh Token이 자동 갱신되므로 **추가 수동 개입 불필요**.  
-ETL을 오래 중단했다가 재시작할 경우 Refresh Token이 만료될 수 있으며, 이때는 아래 [초기 설정](#초기-설정---토큰-발급)을 다시 수행한다.
+ETL을 오래 중단했다가 재시작할 경우 Refresh Token이 만료될 수 있으며, 이때는 아래 [초기 설정](#초기-설정--토큰-발급)을 다시 수행한다.
 
 ### 파일 다운로드 방식
 
@@ -66,10 +68,10 @@ Drive 파일
 
 - Python 3.8 이상
 - `siemens_scx` SDK (사내 배포 패키지)
-- `requests`, `python-dotenv`
+- `requests`, `python-dotenv`, `wsgidav`, `cheroot`
 
 ```bash
-pip install python-dotenv requests
+pip install python-dotenv requests wsgidav cheroot
 pip install siemens_scx  # 사내 패키지 설치 방법에 따름
 ```
 
@@ -140,6 +142,101 @@ python download_all.py
 
 ---
 
+## Drive 마운트 (WebDAV)
+
+Drive를 로컬 폴더에 마운트하면 **파일 탐색기처럼** Drive 파일을 직접 탐색할 수 있다.
+
+### 마운트 구조
+
+```
+mount_dav.py        → localhost:8888 WebDAV 서버 (Python)
+    ↕ HTTP WebDAV
+rclone / davfs2     → DEST_DIR (로컬 마운트 포인트)
+```
+
+### 사전 요구사항 (Linux)
+
+```bash
+# rclone 설치 (권장 — FUSE 기반, sudo 불필요)
+curl https://rclone.org/install.sh | sudo bash
+# 또는
+sudo apt install rclone
+
+# FUSE 지원 확인
+sudo apt install fuse3   # Ubuntu 22.04+
+```
+
+### 마운트 유지 스크립트 실행
+
+```bash
+chmod +x mount_keep.sh
+
+# 포그라운드 실행 (테스트용)
+./mount_keep.sh
+
+# 백그라운드 실행
+nohup ./mount_keep.sh > mount_keep.log 2>&1 &
+echo $! > .mount_keep.pid
+
+# screen 세션으로 실행 (권장)
+screen -S altairone-mount ./mount_keep.sh
+# 분리: Ctrl+A, D  /  재접속: screen -r altairone-mount
+```
+
+`.env`의 `DEST_DIR`이 마운트 포인트로 사용된다.
+
+### 마운트 해제
+
+```bash
+# 스크립트 종료 (Ctrl+C) 시 자동 해제
+# 또는 수동 해제
+fusermount -u <DEST_DIR>         # rclone 사용 시
+sudo umount <DEST_DIR>           # davfs2 사용 시
+```
+
+### 마운트 지속성 — 얼마나 오래 유지되나?
+
+| 항목 | 설명 | 자동 처리 |
+|------|------|-----------|
+| Access Token 만료 (~24h) | 서버 재시작으로 갱신 | ✅ `mount_keep.sh` 20h마다 재시작 |
+| Refresh Token 만료 (수주) | .env 수동 갱신 필요 | ⚠️ ETL 중단 시 수동 갱신 |
+| WebDAV 서버 크래시 | 자동 재시작 | ✅ `mount_keep.sh` 30초 감시 |
+| 마운트 해제 감지 | 자동 재마운트 | ✅ `mount_keep.sh` 30초 감시 |
+| 서버 재부팅 | systemd 서비스 등록 필요 | ⚠️ 아래 참고 |
+
+**결론**: ETL이 정기적으로 돌아가는 한 Refresh Token이 순환되므로 **무기한 지속 가능**.  
+장기간(수주) 중단 후 재시작 시에는 브라우저에서 토큰을 재발급해야 한다.
+
+### systemd 서비스 등록 (재부팅 후 자동 시작)
+
+```ini
+# /etc/systemd/system/altairone-mount.service
+[Unit]
+Description=Altairone Drive Mount
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<your-user>
+WorkingDirectory=/path/to/04_개발
+ExecStart=/path/to/04_개발/mount_keep.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable altairone-mount
+sudo systemctl start altairone-mount
+sudo systemctl status altairone-mount
+```
+
+---
+
 ## ETL 자동화
 
 Linux cron 예시 — 매일 새벽 2시 실행:
@@ -151,7 +248,7 @@ Linux cron 예시 — 매일 새벽 2시 실행:
 ### 토큰 만료 시 대응
 
 Refresh Token이 만료되면 스크립트가 `HTTP 401 Unauthorized` 오류를 반환한다.  
-이 경우 [초기 설정](#초기-설정---토큰-발급)을 다시 수행하여 `.env`의 `ACCESS_TOKEN`과 `REFRESH_TOKEN`을 갱신한다.
+이 경우 [초기 설정](#초기-설정--토큰-발급)을 다시 수행하여 `.env`의 `ACCESS_TOKEN`과 `REFRESH_TOKEN`을 갱신한다.
 
 ---
 
