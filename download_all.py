@@ -52,12 +52,16 @@ def connect():
 
 def get_download_url(session, file_id: str) -> str:
     from siemens.scx.core.service.action_executor import execute_action
-    res = execute_action(
-        session=session,
-        action_inputs={"fileId": file_id},
-        action_content_type="altair.system.FsGetDownloadUrlAction",
-    )
-    return res.get("url") if res else None
+    try:
+        res = execute_action(
+            session=session,
+            action_inputs={"fileId": file_id},
+            action_content_type="altair.system.FsGetDownloadUrlAction",
+        )
+        return res.get("url") if res else None
+    except Exception as e:
+        print(f"    WARN (URL 발급 실패, 재시도 필요): {e}", flush=True)
+        return None
 
 
 def download_file(session, file_obj, local_dir: Path, stats: dict):
