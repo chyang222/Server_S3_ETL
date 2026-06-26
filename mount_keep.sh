@@ -102,7 +102,8 @@ do_mount() {
     # rclone 우선
     if command -v rclone &>/dev/null; then
         log "rclone 마운트 시도: $MOUNT_POINT"
-        rclone mount ":webdav,url=http://localhost:$PORT/" "$MOUNT_POINT" \
+        rclone mount :webdav: "$MOUNT_POINT" \
+            --webdav-url "http://localhost:$PORT/" \
             --daemon \
             --vfs-cache-mode off \
             --dir-cache-time "${CHECK_INTERVAL}s" \
