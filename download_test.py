@@ -10,8 +10,8 @@ from dotenv import load_dotenv, set_key
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
 
-# ── .env 로드 (04_개발/.env 기준) ─────────────────────────────────────────────
-ENV_FILE = Path(__file__).parent.parent / "04_개발" / ".env"
+# ── .env 로드 (스크립트와 같은 폴더) ──────────────────────────────────────────
+ENV_FILE = Path(__file__).parent / ".env"
 load_dotenv(ENV_FILE)
 
 SERVER_URL    = os.environ["SERVER_URL"]
