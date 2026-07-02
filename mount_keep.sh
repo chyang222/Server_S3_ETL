@@ -105,7 +105,7 @@ do_mount() {
         rclone mount :webdav: "$MOUNT_POINT" \
             --webdav-url "http://localhost:$PORT/" \
             --daemon \
-            --vfs-cache-mode reads \
+            --vfs-cache-mode minimal \
             --dir-cache-time "${CHECK_INTERVAL}s" \
             --poll-interval "${CHECK_INTERVAL}s" \
             --log-level WARNING \
