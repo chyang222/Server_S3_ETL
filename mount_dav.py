@@ -120,7 +120,7 @@ class AltaironeFile(DAVNonCollection):
 
     def get_content_length(self):  return self._file_obj.size or 0
     def get_content_type(self):    return "application/octet-stream"
-    def get_etag(self):            return f'"{self._file_obj.id}"'
+    def get_etag(self):            return self._file_obj.id
     def support_etag(self):        return True
     def get_last_modified(self):   return None
     def support_modified(self):    return False
