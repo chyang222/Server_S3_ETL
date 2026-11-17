@@ -1,4 +1,4 @@
-# Samsung A1 — Altairone Drive ETL
+# Altairone Drive ETL
 
 Altairone Drive(S3 기반)에서 로컬 서버로 파일을 자동 복사하는 ETL 스크립트.
 
